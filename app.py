@@ -9,7 +9,7 @@ st.title("🌿 Plant Leaf Disease Detection")
 
 @st.cache_resource
 def load_model():
-    return tf.keras.models.load_model("model.h5", compile=False)
+    return tf.keras.models.load_model("model.keras", compile=False)
 
 model = load_model()
 
@@ -40,3 +40,4 @@ if uploaded_file:
 
     st.success(f"🌱 Disease: **{class_names[index]}**")
     st.info(f"📊 Confidence: **{confidence:.2f}%**")
+
