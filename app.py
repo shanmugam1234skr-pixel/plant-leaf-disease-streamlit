@@ -13,7 +13,6 @@ st.set_page_config(
 # ================== CONSTANTS ==================
 MODEL_PATH = "model.keras"
 IMG_SIZE = 224
-CONFIDENCE_THRESHOLD = 0.60
 
 # ================== LOAD MODEL ==================
 @st.cache_resource
@@ -44,127 +43,112 @@ CLASS_NAMES = [
 
 # ================== TREATMENTS ==================
 TREATMENTS = {
-    "Apple Black Rot": "Remove infected fruits and branches. Apply recommended fungicides.",
-    "Apple Healthy": "No treatment required. Maintain good orchard hygiene.",
-
-    "Corn Cercospora Leaf Spot": "Use resistant varieties and apply fungicides if required.",
-    "Corn Healthy": "Healthy crop. Maintain proper nutrient management.",
-
-    "Potato Early Blight": "Apply mancozeb or chlorothalonil. Avoid overhead irrigation.",
-    "Potato Late Blight": "Remove infected plants immediately and apply fungicides.",
-    "Potato Healthy": "Healthy crop. Regular monitoring is sufficient.",
-
+    "Apple Black Rot": "Remove infected fruits and branches. Apply fungicide.",
+    "Corn Cercospora Leaf Spot": "Use resistant varieties and fungicides.",
+    "Potato Early Blight": "Apply mancozeb or chlorothalonil.",
+    "Potato Late Blight": "Remove infected plants immediately.",
     "Tomato Early Blight": "Remove affected leaves and apply fungicide.",
-    "Tomato Late Blight": "Destroy infected plants and apply fungicides early.",
-    "Tomato Leaf Mold": "Reduce humidity and improve air circulation.",
+    "Tomato Late Blight": "Destroy infected plants and apply fungicide.",
+    "Tomato Leaf Mold": "Reduce humidity and improve ventilation.",
     "Tomato Septoria Leaf Spot": "Remove infected leaves and apply fungicide.",
     "Tomato Spider Mites": "Use neem oil or insecticidal soap.",
-    "Tomato Target Spot": "Remove plant debris and apply fungicide.",
+    "Tomato Target Spot": "Remove debris and apply fungicide.",
     "Tomato Yellow Leaf Curl Virus": "Control whiteflies and remove infected plants.",
-    "Tomato Mosaic Virus": "Remove infected plants and disinfect tools.",
-    "Tomato Healthy": "Healthy leaf. Maintain proper irrigation."
+    "Tomato Mosaic Virus": "Remove infected plants and disinfect tools."
 }
 
-# ================== MULTI-LANGUAGE TEXT ==================
+# ================== MULTI-LANGUAGE UI ==================
 TEXT = {
     "English": {
         "title": "AI Plant Leaf Disease Detection",
-        "upload": "Upload a leaf image",
         "warning": "Supports only Apple, Corn, Potato, and Tomato leaves",
+        "upload": "Upload a leaf image",
+        "status": "Select leaf condition",
+        "healthy": "Healthy leaf",
+        "diseased": "Diseased leaf",
         "analyzing": "AI is analyzing the image...",
         "confidence": "Confidence",
         "treatment": "Treatment & Prevention",
-        "low_conf": "Low confidence prediction. Image may be unclear or outside dataset.",
-        "disclaimer": "This AI system predicts diseases only from trained crops. Results are advisory."
+        "healthy_msg": "Leaf is healthy. No disease detected.",
+        "disclaimer": "AI predictions are advisory and based on trained crops only."
     },
     "Tamil": {
         "title": "ஏ.ஐ. தாவர இலை நோய் கண்டறிதல்",
-        "upload": "இலை படத்தை பதிவேற்றவும்",
         "warning": "ஆப்பிள், சோளம், உருளைக்கிழங்கு மற்றும் தக்காளி இலைகளுக்கு மட்டும்",
+        "upload": "இலை படத்தை பதிவேற்றவும்",
+        "status": "இலை நிலையை தேர்வு செய்யவும்",
+        "healthy": "ஆரோக்கியமான இலை",
+        "diseased": "நோயுற்ற இலை",
         "analyzing": "ஏ.ஐ. படம் பகுப்பாய்வு செய்கிறது...",
         "confidence": "நம்பகத்தன்மை",
         "treatment": "சிகிச்சை மற்றும் தடுப்பு",
-        "low_conf": "குறைந்த நம்பகத்தன்மை. தெளிவான படத்தை பதிவேற்றவும்.",
-        "disclaimer": "இந்த ஏ.ஐ. பயிற்சி பெற்ற பயிர்களுக்கு மட்டும் பொருந்தும்."
+        "healthy_msg": "இலை ஆரோக்கியமாக உள்ளது.",
+        "disclaimer": "ஏ.ஐ. கணிப்புகள் வழிகாட்டுதலுக்காக மட்டுமே."
     },
     "Hindi": {
         "title": "एआई पौधा पत्ती रोग पहचान",
-        "upload": "पत्ती की छवि अपलोड करें",
         "warning": "केवल सेब, मक्का, आलू और टमाटर पत्तियाँ समर्थित हैं",
+        "upload": "पत्ती की छवि अपलोड करें",
+        "status": "पत्ती की स्थिति चुनें",
+        "healthy": "स्वस्थ पत्ती",
+        "diseased": "बीमार पत्ती",
         "analyzing": "एआई छवि का विश्लेषण कर रहा है...",
         "confidence": "विश्वसनीयता",
         "treatment": "उपचार और रोकथाम",
-        "low_conf": "कम विश्वसनीयता। कृपया स्पष्ट छवि अपलोड करें।",
-        "disclaimer": "यह एआई केवल प्रशिक्षित फसलों के लिए मान्य है।"
+        "healthy_msg": "पत्ती स्वस्थ है।",
+        "disclaimer": "एआई परिणाम केवल सलाह के लिए हैं।"
     }
 }
 
 # ================== LANGUAGE SELECT ==================
-language = st.selectbox("🌐 Select Language / மொழி / भाषा", ["English", "Tamil", "Hindi"])
+language = st.selectbox("🌐 Language / மொழி / भाषा", ["English", "Tamil", "Hindi"])
 t = TEXT[language]
 
 # ================== UI ==================
 st.title(f"🌿 {t['title']}")
-
 st.warning(f"⚠️ {t['warning']}")
+
+leaf_status = st.radio(
+    t["status"],
+    [t["healthy"], t["diseased"]]
+)
 
 uploaded_file = st.file_uploader(
     t["upload"],
     type=["jpg", "jpeg", "png"]
 )
-# ================== PREDICTION ==================
+
+# ================== LOGIC ==================
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
+    # ✅ HEALTHY LEAF (HUMAN-IN-LOOP)
+    if leaf_status == t["healthy"]:
+        st.success(t["healthy_msg"])
+        st.caption("✔ Verified by user input")
+        st.stop()
+
+    # 🔍 DISEASE PREDICTION
     with st.spinner(t["analyzing"]):
         img = image.resize((IMG_SIZE, IMG_SIZE))
         img_array = np.array(img) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
 
-        preds = model.predict(img_array)[0]
+        preds = model.predict(img_array)
+        index = int(np.argmax(preds))
+        confidence = float(np.max(preds))
 
-    # --------- GET TOP PREDICTION ---------
-    top_index = int(np.argmax(preds))
-    top_conf = float(preds[top_index])
+    disease = CLASS_NAMES[index]
 
-    # --------- HEALTHY CALIBRATION ---------
-    predicted_label = CLASS_NAMES[top_index]
-    crop = predicted_label.split()[0]
-
-    # Find healthy class for same crop
-    healthy_index = None
-    for i, name in enumerate(CLASS_NAMES):
-        if name.lower() == f"{crop.lower()} healthy":
-            healthy_index = i
-            break
-
-    # If healthy exists, compare confidence
-    if healthy_index is not None:
-        healthy_conf = float(preds[healthy_index])
-
-        # Margin-based correction (5%)
-        if healthy_conf >= (top_conf - 0.05):
-            predicted_label = CLASS_NAMES[healthy_index]
-            final_conf = healthy_conf
-        else:
-            final_conf = top_conf
-    else:
-        final_conf = top_conf
-
-    # --------- DISPLAY RESULT ---------
-    st.success(f"🦠 Prediction: **{predicted_label}**")
-    st.progress(final_conf)
-    st.metric(t["confidence"], f"{final_conf*100:.2f}%")
-
-    if final_conf < CONFIDENCE_THRESHOLD:
-        st.warning(t["low_conf"])
+    st.success(f"🦠 {disease}")
+    st.progress(confidence)
+    st.metric(t["confidence"], f"{confidence*100:.2f}%")
 
     st.markdown(f"### 💊 {t['treatment']}")
-    st.info(TREATMENTS[predicted_label])
+    st.info(TREATMENTS.get(disease, "Consult agricultural expert."))
 
 # ================== FOOTER ==================
 st.markdown("---")
 st.caption(t["disclaimer"])
 st.caption("Commercial AI Demo • Streamlit + TensorFlow")
-
