@@ -51,7 +51,8 @@ if uploaded_file:
     index = np.argmax(prediction)
     confidence = np.max(prediction) * 100
 
-   st.success(f"🌱 Disease: **{class_names[index]}**")
+    st.success(f"🌱 Disease: **{class_names[index]}**")
     st.info(f"📊 Confidence: **{confidence:.2f}%**")
+
 
 
