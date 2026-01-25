@@ -3,7 +3,9 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 
-# ---------------- PAGE CONFIG ----------------
+# -------------------------------------------------
+# PAGE CONFIG
+# -------------------------------------------------
 st.set_page_config(
     page_title="Plant Leaf Disease Detection",
     page_icon="🌿",
@@ -11,15 +13,20 @@ st.set_page_config(
 )
 
 st.title("🌿 Plant Leaf Disease Detection")
+st.write("Upload, drag-drop, paste, or capture a leaf image")
 
-# ---------------- LOAD MODEL ----------------
+# -------------------------------------------------
+# LOAD MODEL
+# -------------------------------------------------
 @st.cache_resource
 def load_model():
     return tf.keras.models.load_model("model.keras", compile=False)
 
 model = load_model()
 
-# ---------------- CLASS NAMES ----------------
+# -------------------------------------------------
+# CLASS NAMES (PlantVillage – exact training order)
+# -------------------------------------------------
 CLASS_NAMES = [
     "Apple___Apple_scab",
     "Apple___Black_rot",
@@ -47,57 +54,100 @@ CLASS_NAMES = [
     "Tomato___healthy"
 ]
 
-CONFIDENCE_THRESHOLD = 0.60
+# -------------------------------------------------
+# THRESHOLDS (IMPORTANT)
+# -------------------------------------------------
+CONFIDENCE_THRESHOLD = 0.80      # reject weak predictions
+GAP_THRESHOLD = 0.15             # top-1 vs top-2 confidence gap
 
-# ---------------- INPUT METHODS ----------------
-st.subheader("Upload or Paste a Leaf Image")
+# -------------------------------------------------
+# TREATMENT SUGGESTIONS
+# -------------------------------------------------
+TREATMENTS = {
+    "Apple": "Prune infected leaves, apply recommended fungicide, ensure good air circulation.",
+    "Corn": "Use resistant varieties, rotate crops, avoid overhead irrigation.",
+    "Potato": "Apply fungicide early, remove infected plants, avoid excess moisture.",
+    "Tomato": "Remove affected leaves, use neem oil or fungicide, maintain proper spacing."
+}
 
+# -------------------------------------------------
+# INPUT METHODS
+# -------------------------------------------------
 uploaded_file = st.file_uploader(
-    "Upload / Drag & Drop / Paste image here",
+    "Upload / Drag-Drop / Paste image",
     type=["jpg", "jpeg", "png"]
 )
 
 camera_image = st.camera_input("Or capture image using camera")
 
-# Decide input source
 image = None
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
 elif camera_image:
     image = Image.open(camera_image).convert("RGB")
 
-# ---------------- PREDICTION ----------------
+# -------------------------------------------------
+# PREDICTION LOGIC
+# -------------------------------------------------
 if image is not None:
     st.image(image, caption="Input Image", use_column_width=True)
 
+    # Preprocess
     img = image.resize((224, 224))
     img_array = np.array(img) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    preds = model.predict(img_array)
-    confidence = float(np.max(preds))
+    # Simple image sanity check
+    mean_pixel = np.mean(img_array)
+    if mean_pixel < 0.2 or mean_pixel > 0.9:
+        st.error("❌ Image quality too low or not a leaf")
+        st.stop()
+
+    # Model prediction
+    preds = model.predict(img_array)[0]
+
+    top1 = float(np.max(preds))
+    top2 = float(np.sort(preds)[-2])
+    gap = top1 - top2
     index = int(np.argmax(preds))
 
-    if confidence < CONFIDENCE_THRESHOLD:
-        st.error("❌ Image not recognized as a plant leaf")
-        st.info("Please upload a clear leaf image (Apple, Corn, Potato, Tomato).")
+    # -------------------------------------------------
+    # UNKNOWN / WRONG IMAGE HANDLING
+    # -------------------------------------------------
+    if top1 < CONFIDENCE_THRESHOLD or gap < GAP_THRESHOLD:
+        st.error("❌ Image not confidently recognized")
+        st.info("Please upload a clear leaf image of Apple, Corn, Potato, or Tomato.")
     else:
         label = CLASS_NAMES[index]
         crop, disease = label.split("___")
 
-        st.success(f"🌱 Crop: **{crop.replace('_',' ')}**")
-        st.warning(f"🦠 Disease: **{disease.replace('_',' ')}**")
-        st.info(f"📊 Confidence: **{confidence*100:.2f}%**")
-        st.progress(confidence)
+        crop_clean = crop.replace("_", " ")
+        disease_clean = disease.replace("_", " ")
+
+        st.success(f"🌱 Crop: **{crop_clean}**")
+        st.warning(f"🦠 Disease: **{disease_clean}**")
+
+        st.info(f"📊 Confidence: **{top1 * 100:.2f}%**")
+        st.progress(top1)
 
         if "healthy" in disease.lower():
-            st.success("✅ Plant is healthy")
+            st.success("✅ The plant is healthy. No treatment required.")
         else:
-            st.write("💊 Suggested actions:")
-            st.write("- Remove infected leaves")
-            st.write("- Apply suitable fungicide")
-            st.write("- Avoid overwatering")
+            st.write("💊 **Suggested Treatment & Prevention:**")
+            st.write(TREATMENTS.get(crop_clean.split()[0], "Consult an agricultural expert."))
 
-# ---------------- FOOTER ----------------
+        # -------------------------------------------------
+        # TRANSPARENCY: TOP-3 PREDICTIONS
+        # -------------------------------------------------
+        st.markdown("### 🔍 Top-3 Predictions")
+        top3_idx = preds.argsort()[-3:][::-1]
+        for i in top3_idx:
+            name = CLASS_NAMES[i].replace("___", " → ").replace("_", " ")
+            st.write(f"- {name} : {preds[i]*100:.2f}%")
+
+# -------------------------------------------------
+# FOOTER
+# -------------------------------------------------
 st.markdown("---")
-st.caption("AI-Based Plant Leaf Disease Detection | Streamlit")
+st.caption("AI-Based Plant Leaf Disease Detection | Streamlit + TensorFlow")
+
