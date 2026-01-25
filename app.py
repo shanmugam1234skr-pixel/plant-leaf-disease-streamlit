@@ -112,7 +112,6 @@ uploaded_file = st.file_uploader(
     t["upload"],
     type=["jpg", "jpeg", "png"]
 )
-
 # ================== PREDICTION ==================
 if uploaded_file:
     image = Image.open(uploaded_file).convert("RGB")
@@ -123,24 +122,49 @@ if uploaded_file:
         img_array = np.array(img) / 255.0
         img_array = np.expand_dims(img_array, axis=0)
 
-        preds = model.predict(img_array)
-        confidence = float(np.max(preds))
-        index = int(np.argmax(preds))
+        preds = model.predict(img_array)[0]
 
-    disease = CLASS_NAMES[index]
-    crop = disease.split()[0]
+    # --------- GET TOP PREDICTION ---------
+    top_index = int(np.argmax(preds))
+    top_conf = float(preds[top_index])
 
-    st.success(f"🦠 {disease}")
-    st.progress(confidence)
-    st.metric(t["confidence"], f"{confidence*100:.2f}%")
+    # --------- HEALTHY CALIBRATION ---------
+    predicted_label = CLASS_NAMES[top_index]
+    crop = predicted_label.split()[0]
 
-    if confidence < CONFIDENCE_THRESHOLD:
+    # Find healthy class for same crop
+    healthy_index = None
+    for i, name in enumerate(CLASS_NAMES):
+        if name.lower() == f"{crop.lower()} healthy":
+            healthy_index = i
+            break
+
+    # If healthy exists, compare confidence
+    if healthy_index is not None:
+        healthy_conf = float(preds[healthy_index])
+
+        # Margin-based correction (5%)
+        if healthy_conf >= (top_conf - 0.05):
+            predicted_label = CLASS_NAMES[healthy_index]
+            final_conf = healthy_conf
+        else:
+            final_conf = top_conf
+    else:
+        final_conf = top_conf
+
+    # --------- DISPLAY RESULT ---------
+    st.success(f"🦠 Prediction: **{predicted_label}**")
+    st.progress(final_conf)
+    st.metric(t["confidence"], f"{final_conf*100:.2f}%")
+
+    if final_conf < CONFIDENCE_THRESHOLD:
         st.warning(t["low_conf"])
 
     st.markdown(f"### 💊 {t['treatment']}")
-    st.info(TREATMENTS[disease])
+    st.info(TREATMENTS[predicted_label])
 
 # ================== FOOTER ==================
 st.markdown("---")
 st.caption(t["disclaimer"])
 st.caption("Commercial AI Demo • Streamlit + TensorFlow")
+
