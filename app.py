@@ -14,13 +14,26 @@ def load_model():
 model = load_model()
 
 class_names = [
+    "Apple___Apple_scab",
     "Apple___Black_rot",
+    "Apple___Cedar_apple_rust",
     "Apple___healthy",
-    "Corn___Cercospora_leaf_spot",
-    "Corn___healthy",
+    "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot",
+    "Corn_(maize)___Common_rust",
+    "Corn_(maize)___healthy",
+    "Corn_(maize)___Northern_Leaf_Blight",
+    "Potato___Early_blight",
     "Potato___Late_blight",
     "Potato___healthy",
+    "Tomato___Bacterial_spot",
     "Tomato___Early_blight",
+    "Tomato___Late_blight",
+    "Tomato___Leaf_Mold",
+    "Tomato___Septoria_leaf_spot",
+    "Tomato___Spider_mites Two-spotted_spider_mite",
+    "Tomato___Target_Spot",
+    "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
+    "Tomato___Tomato_mosaic_virus",
     "Tomato___healthy"
 ]
 
@@ -40,3 +53,4 @@ if uploaded_file:
 
     st.success(f"🌱 Disease: **{class_names[index]}**")
     st.info(f"📊 Confidence: **{confidence:.2f}%**")
+
