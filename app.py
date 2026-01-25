@@ -38,7 +38,9 @@ CLASS_NAMES = [
 ]
 
 ALLOWED_CROPS = ["Apple", "Corn", "Potato", "Tomato"]
-CONFIDENCE_THRESHOLD = 70.0
+
+CONFIDENCE_THRESHOLD = 75.0
+ENTROPY_THRESHOLD = 2.2   # higher = more confusion
 
 # ---------------- LOAD MODEL ----------------
 @st.cache_resource
@@ -46,6 +48,24 @@ def load_model():
     return tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 model = load_model()
+
+# ---------------- HELPER FUNCTIONS ----------------
+def softmax_entropy(probs):
+    return -np.sum(probs * np.log(probs + 1e-10))
+
+def is_leaf_like(img_array):
+    """
+    Simple heuristic:
+    - leaf images have a strong green channel
+    - reject cars, humans, animals, screens
+    """
+    red = np.mean(img_array[..., 0])
+    green = np.mean(img_array[..., 1])
+    blue = np.mean(img_array[..., 2])
+
+    green_ratio = green / (red + blue + 1e-6)
+
+    return green_ratio > 0.9
 
 # ---------------- UI ----------------
 st.title("🌿 Plant Leaf Disease Detection")
@@ -65,18 +85,17 @@ if uploaded_file:
     img_array = np.array(img) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    # ---------- BASIC LEAF CHECK ----------
-    green_ratio = np.mean(img_array[..., 1])
-    brightness = np.mean(img_array)
-
-    if green_ratio < 0.25 or brightness < 0.15 or brightness > 0.9:
-        st.error("❌ This does not appear to be a plant leaf.")
+    # ---------- REJECTION 1: LEAF CHECK ----------
+    if not is_leaf_like(img_array):
+        st.error("❌ This image does not appear to be a plant leaf.")
         st.info("Please upload a clear green leaf image.")
         st.stop()
 
-    preds = model.predict(img_array)
+    # ---------- MODEL PREDICTION ----------
+    preds = model.predict(img_array)[0]
     index = int(np.argmax(preds))
     confidence = float(np.max(preds)) * 100
+    entropy = softmax_entropy(preds)
 
     label = CLASS_NAMES[index]
     crop, disease = label.split("___")
@@ -84,19 +103,22 @@ if uploaded_file:
     crop = crop.replace("(maize)", "").replace("_", " ").strip()
     disease = disease.replace("_", " ").strip()
 
-    # ---------- UNSUPPORTED CROP ----------
-    if crop not in ALLOWED_CROPS:
-        st.error("❌ Unsupported crop detected")
-        st.info(
-            "This model supports only Apple, Corn, Potato, and Tomato leaves.\n\n"
-            "The uploaded image seems to be from an unknown crop."
-        )
+    # ---------- REJECTION 2: CONFIDENCE ----------
+    if confidence < CONFIDENCE_THRESHOLD:
+        st.error("❌ Low confidence prediction")
+        st.info("This image may not belong to the trained plant classes.")
         st.stop()
 
-    # ---------- LOW CONFIDENCE ----------
-    if confidence < CONFIDENCE_THRESHOLD:
-        st.warning("⚠️ Low confidence prediction")
-        st.info("Please upload a clearer leaf image.")
+    # ---------- REJECTION 3: ENTROPY ----------
+    if entropy > ENTROPY_THRESHOLD:
+        st.error("❌ The model is unsure about this image")
+        st.info("This image may not be a valid plant leaf.")
+        st.stop()
+
+    # ---------- REJECTION 4: UNSUPPORTED CROP ----------
+    if crop not in ALLOWED_CROPS:
+        st.error("❌ Unsupported crop detected")
+        st.info("Only Apple, Corn, Potato, and Tomato leaves are supported.")
         st.stop()
 
     # ---------- RESULT ----------
@@ -115,6 +137,6 @@ if uploaded_file:
 # ---------------- FOOTER ----------------
 st.markdown("---")
 st.caption(
-    "This application uses a deep learning model trained on the PlantVillage dataset. "
-    "Predictions may be unreliable for images outside the training distribution."
+    "Predictions are limited to the PlantVillage dataset. "
+    "Images outside this domain are automatically rejected."
 )
