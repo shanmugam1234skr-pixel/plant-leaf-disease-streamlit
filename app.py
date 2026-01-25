@@ -3,140 +3,109 @@ import tensorflow as tf
 import numpy as np
 from PIL import Image
 
-# ---------------- PAGE CONFIG ----------------
+# ---------------- CONFIG ---------------- #
 st.set_page_config(
     page_title="Plant Leaf Disease Detection",
     page_icon="🌿",
     layout="centered"
 )
 
-# ---------------- CONSTANTS ----------------
 MODEL_PATH = "model.keras"
+IMG_SIZE = 224
+CONFIDENCE_THRESHOLD = 0.70  # 70%
 
-CLASS_NAMES = [
-    "Apple___Apple_scab",
-    "Apple___Black_rot",
-    "Apple___Cedar_apple_rust",
-    "Apple___healthy",
-    "Corn_(maize)___Cercospora_leaf_spot Gray_leaf_spot",
-    "Corn_(maize)___Common_rust",
-    "Corn_(maize)___healthy",
-    "Corn_(maize)___Northern_Leaf_Blight",
-    "Potato___Early_blight",
-    "Potato___Late_blight",
-    "Potato___healthy",
-    "Tomato___Bacterial_spot",
-    "Tomato___Early_blight",
-    "Tomato___healthy",
-    "Tomato___Late_blight",
-    "Tomato___Leaf_Mold",
-    "Tomato___Septoria_leaf_spot",
-    "Tomato___Spider_mites Two-spotted_spider_mite",
-    "Tomato___Target_Spot",
-    "Tomato___Tomato_Yellow_Leaf_Curl_Virus",
-    "Tomato___Tomato_mosaic_virus"
-]
-
-ALLOWED_CROPS = ["Apple", "Corn", "Potato", "Tomato"]
-
-CONFIDENCE_THRESHOLD = 75.0
-ENTROPY_THRESHOLD = 2.2   # higher = more confusion
-
-# ---------------- LOAD MODEL ----------------
+# ---------------- LOAD MODEL ---------------- #
 @st.cache_resource
 def load_model():
     return tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 model = load_model()
 
-# ---------------- HELPER FUNCTIONS ----------------
-def softmax_entropy(probs):
-    return -np.sum(probs * np.log(probs + 1e-10))
+# ---------------- CLASS NAMES ---------------- #
+CLASS_NAMES = [
+    "Apple – Black rot",
+    "Apple – Healthy",
+    "Corn – Cercospora leaf spot",
+    "Corn – Healthy",
+    "Potato – Early blight",
+    "Potato – Late blight",
+    "Potato – Healthy",
+    "Tomato – Early blight",
+    "Tomato – Late blight",
+    "Tomato – Leaf Mold",
+    "Tomato – Septoria leaf spot",
+    "Tomato – Spider mites",
+    "Tomato – Target Spot",
+    "Tomato – Yellow Leaf Curl Virus",
+    "Tomato – Mosaic Virus",
+    "Tomato – Healthy"
+]
 
+# ---------------- LEAF VALIDATION ---------------- #
 def is_leaf_like(img_array):
     """
-    Simple heuristic:
-    - leaf images have a strong green channel
-    - reject cars, humans, animals, screens
+    Rejects cars, humans, screenshots, plain objects.
+    Accepts green, yellow, diseased leaves.
     """
-    red = np.mean(img_array[..., 0])
-    green = np.mean(img_array[..., 1])
-    blue = np.mean(img_array[..., 2])
+    img = img_array[0]
 
-    green_ratio = green / (red + blue + 1e-6)
+    r_std = np.std(img[:, :, 0])
+    g_std = np.std(img[:, :, 1])
+    b_std = np.std(img[:, :, 2])
 
-    return green_ratio > 0.9
+    total_variance = r_std + g_std + b_std
 
-# ---------------- UI ----------------
+    return total_variance > 0.08
+
+
+# ---------------- UI ---------------- #
 st.title("🌿 Plant Leaf Disease Detection")
-st.write("Upload a **leaf image** from Apple, Corn, Potato, or Tomato crops.")
+st.caption("Upload a plant leaf image (Tomato / Potato / Corn / Apple)")
 
 uploaded_file = st.file_uploader(
     "Upload a leaf image",
     type=["jpg", "jpeg", "png"]
 )
 
-# ---------------- PREDICTION ----------------
-if uploaded_file:
+if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Input Image", use_column_width=True)
 
-    img = image.resize((224, 224))
+    # -------- PREPROCESS -------- #
+    img = image.resize((IMG_SIZE, IMG_SIZE))
     img_array = np.array(img) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
 
-    # ---------- REJECTION 1: LEAF CHECK ----------
+    # -------- LEAF CHECK -------- #
     if not is_leaf_like(img_array):
-        st.error("❌ This image does not appear to be a plant leaf.")
-        st.info("Please upload a clear green leaf image.")
+        st.error("❌ This does not appear to be a plant leaf.")
+        st.info("Please upload a clear plant leaf image.")
         st.stop()
 
-    # ---------- MODEL PREDICTION ----------
-    preds = model.predict(img_array)[0]
-    index = int(np.argmax(preds))
-    confidence = float(np.max(preds)) * 100
-    entropy = softmax_entropy(preds)
+    # -------- PREDICTION -------- #
+    preds = model.predict(img_array)
+    confidence = float(np.max(preds))
+    class_index = int(np.argmax(preds))
 
-    label = CLASS_NAMES[index]
-    crop, disease = label.split("___")
-
-    crop = crop.replace("(maize)", "").replace("_", " ").strip()
-    disease = disease.replace("_", " ").strip()
-
-    # ---------- REJECTION 2: CONFIDENCE ----------
+    # -------- CONFIDENCE FILTER -------- #
     if confidence < CONFIDENCE_THRESHOLD:
-        st.error("❌ Low confidence prediction")
-        st.info("This image may not belong to the trained plant classes.")
+        st.warning("⚠️ Leaf detected, but disease is uncertain.")
+        st.info("Try a clearer image with good lighting.")
+        st.metric("Confidence", f"{confidence*100:.2f}%")
         st.stop()
 
-    # ---------- REJECTION 3: ENTROPY ----------
-    if entropy > ENTROPY_THRESHOLD:
-        st.error("❌ The model is unsure about this image")
-        st.info("This image may not be a valid plant leaf.")
-        st.stop()
+    predicted_class = CLASS_NAMES[class_index]
 
-    # ---------- REJECTION 4: UNSUPPORTED CROP ----------
-    if crop not in ALLOWED_CROPS:
-        st.error("❌ Unsupported crop detected")
-        st.info("Only Apple, Corn, Potato, and Tomato leaves are supported.")
-        st.stop()
+    # -------- RESULT DISPLAY -------- #
+    st.success(f"🌱 Disease Detected: **{predicted_class}**")
+    st.metric("Confidence", f"{confidence*100:.2f}%")
 
-    # ---------- RESULT ----------
-    st.success(f"🌱 Crop: **{crop}**")
-    st.success(f"🦠 Disease: **{disease}**")
-    st.info(f"📊 Confidence: **{confidence:.2f}%**")
-
-    if disease.lower() == "healthy":
-        st.success("✅ The leaf appears healthy.")
+    # -------- EXTRA INFO -------- #
+    if "Healthy" in predicted_class:
+        st.info("✅ The leaf appears healthy.")
     else:
-        st.warning(
-            "⚠️ This is an AI-based prediction.\n\n"
-            "For accurate treatment, consult an agricultural expert."
-        )
+        st.warning("⚠️ Disease detected. Consider proper treatment.")
 
-# ---------------- FOOTER ----------------
+# ---------------- FOOTER ---------------- #
 st.markdown("---")
-st.caption(
-    "Predictions are limited to the PlantVillage dataset. "
-    "Images outside this domain are automatically rejected."
-)
+st.caption("AI-based Plant Leaf Disease Detection • Streamlit + TensorFlow")
