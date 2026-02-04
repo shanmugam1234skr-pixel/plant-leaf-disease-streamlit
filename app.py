@@ -139,7 +139,3 @@ if file:
 
 st.markdown("---")
 st.caption("🔬 AI-powered commercial plant disease prediction system")
-
-st.caption(t["disclaimer"])
-st.caption("Commercial AI Demo • Streamlit + TensorFlow")
-
